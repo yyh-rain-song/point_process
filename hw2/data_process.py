@@ -39,6 +39,8 @@ class Dataset:
             self.sample_dict[row[0]].add_point(float(row[1]), int(row[2]))
         for sam in self.sample_dict.values():
             sam.shift_time()
+        self._get_all_num()
+        self.start = 0
 
     def get_sample(self, idx):
         return self.sample_dict[self.names[idx]]
@@ -46,7 +48,25 @@ class Dataset:
     def get_size(self):
         return len(self.names)
 
+    def get_next_batch(self):
+        num = 0
+        batch_data = []
+        while num < self.ave_batch_len:
+            sam = self.get_sample(self.start)
+            batch_data.append(sam)
+            num += sam.get_size()
+            self.start += 1
+            self.start %= self.get_size()
+        return batch_data
+
+    def _get_all_num(self):
+        num = []
+        for sam in self.sample_dict.values():
+            num.append(sam.get_size())
+        ave_len = sum(num) / len(num)
+        self.ave_batch_len = ave_len * Config.batch_size
+
 
 if __name__ == '__main__':
     sample_dict = Dataset(Config.train_data_path)
-    print(sample_dict.get_size())
+    sample_dict.get_next_batch()

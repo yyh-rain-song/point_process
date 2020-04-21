@@ -6,10 +6,8 @@ import matplotlib.pyplot as pyplot
 random.seed(3)
 
 
-
-
-class point:
-    def __init__(self, timestep=0, dim=-1):
+class Point:
+    def __init__(self, timestep=0.0, dim=-1):
         self.timestep = timestep
         self.dim = dim
 
@@ -17,60 +15,19 @@ class point:
         return self.timestep
 
 
-def gen_a_point(s):
-    tmp_point_list = []
-    for d in range(Z):
-        lam = lambda_function(s, d)
-        if math.fabs(lam) < 1e-9:
-            continue
-        v = random.uniform(0.0,1.0)
-        w = -math.log(v)/lam
-        new_s = s + w
-        D = random.uniform(0.0,1.0)
-        if D*lam <= lambda_function(new_s, d):
-            tmp_point_list.append(point(new_s, d))
-    return tmp_point_list
-
-
-def gen_points():
-    s, n = 0, 0
-    while s < stopping_time:
-        tmp_point = gen_a_point(s)
-        if len(tmp_point) != 0:
-            tmp_point.sort(key=point.get_time)
-            new_point = tmp_point[0]
-            point_list.append(new_point)
-            s = new_point.get_time()
-            n = n + 1
-            print('dim='+str(new_point.dim) + ' time='+str(new_point.get_time()))
-
-
-def draw_picture():
-    x = []
-    y = []
-    for point in point_list:
-        x.append(point.timestep)
-        y.append(point.dim)
-    print(y)
-
-    times = []
-    value1 = []
-    value2 = []
-    for i in range(0, 5000):
-        t = i / 1000
-        times.append(t)
-        value1.append(lambda_function(t, 5))
-        value2.append(lambda_function(t, 0))
-    pyplot.plot(times,value1)
-    pyplot.plot(times,value2)
-    pyplot.show()
-
-
 def calculus(func, s, t, interval):
     delta = (t-s)/interval
     ans = 0
     for i in range(0, interval):
         ans += func(s + i*delta) * delta
+    return ans
+
+
+def calculus2(func, k, s, t, interval):
+    delta = (t-s)/interval
+    ans = 0
+    for i in range(0, interval):
+        ans += func(k, s + i*delta) * delta
     return ans
 
 
@@ -93,7 +50,7 @@ class OneDimHaw:
     def gen_points(self):
         s = 0
         n = 0
-        T = 900
+        T = 100
         while s < T:
             lam = self.lam(s)
             u = random.uniform(0,1)
@@ -120,6 +77,13 @@ class OneDimHaw:
         pyplot.show()
 
 
+def find_suitible_dim(I, I_, D):
+    dim = 0
+    while D >= I[dim]/I_:
+        dim = dim + 1
+    return dim
+
+
 class MultiDimHaw:
     def __init__(self):
         A = [0.1, 0.07, 0.004, 0, 0.003, 0, 0.09, 0, 0.07, 0.025,
@@ -139,9 +103,8 @@ class MultiDimHaw:
         self.u = np.array(u)
         self.point_list = []
 
-    def lam(self, d):
+    def lam(self, d, t):
         tmp = 0
-        t = 100
         for point in self.point_list:
             if point.timestep > t:
                 break
@@ -149,11 +112,128 @@ class MultiDimHaw:
         tmp += self.u[d]
         return tmp
 
+    def I(self, lam):
+        I = [lam[0]]
+        for dim in range(1, self.Z):
+            I.append(I[dim-1] + lam[dim])
+        return I
+
+    def gen_event(self):
+        T = 100
+        I = [1]*self.Z
+        I_ = sum(self.u)
+        V = random.uniform(0,1)
+        t = -math.log(V) / I_
+        if t > T:
+            return
+        D = random.uniform(0,1)
+        dim = find_suitible_dim(I, I_, D)
+        self.point_list.append(Point(t, dim))
+
+        while True:
+            if len(self.point_list) >= 2000:
+                break
+            if len(self.point_list)%100 == 0:
+                print(len(self.point_list))
+            I_ = I[self.Z - 1]
+            V = random.uniform(0,1)
+            s = -math.log(V) / I_
+            t = t + s
+            U = random.uniform(0,1)
+            if t > T:
+                break
+            lam = [self.lam(i, t) for i in range(self.Z)]
+            I = self.I(lam)
+            if U < I[self.Z - 1] / I_:
+                dim = find_suitible_dim(I, I_, U)
+                self.point_list.append(Point(t, dim))
+
+    def interval_calc(self):
+        A = np.zeros((self.Z, self.Z, len(self.point_list)))
+        for m in range(self.Z):
+            for n in range(self.Z):
+                seq_start = seq_end = 0
+                i = 2
+                while True:
+                    while seq_start < len(self.point_list) and self.point_list[seq_start].dim != m:
+                        seq_start = seq_start + 1
+                    if seq_start >= len(self.point_list):
+                        break
+                    seq_end = seq_start + 1
+                    while seq_end < len(self.point_list) and self.point_list[seq_end].dim != m:
+                        seq_end = seq_end + 1
+                    if seq_end >= len(self.point_list):
+                        break
+                    end_time = self.point_list[seq_end].timestep
+                    A[m][n][i-1] = math.exp(-self.w*(end_time - self.point_list[seq_start].timestep))
+                    for idx in range(seq_start, seq_end):
+                        point = self.point_list[idx]
+                        A[m][n][i - 1] += math.exp(-self.w*(end_time-point.timestep))
+                    i = i + 1
+                    seq_start = seq_end
+
+        gamma = np.zeros((self.Z, len(self.point_list)))
+        for m in range(self.Z):
+            seq_start = seq_end = 0
+            i = 1
+            while True:
+                while seq_start < len(self.point_list) and self.point_list[seq_start].dim != m:
+                    seq_start = seq_start + 1
+                if seq_start >= len(self.point_list):
+                    break
+                seq_end = seq_start + 1
+                while seq_end < len(self.point_list) and self.point_list[seq_end].dim != m:
+                    seq_end = seq_end + 1
+                if seq_end >= len(self.point_list):
+                    break
+                s_time = self.point_list[seq_start].timestep
+                e_time = self.point_list[seq_end].timestep
+                gamma[m][i] = self.u[m] * (e_time - s_time)
+                for n in range(self.Z):
+                    tmp = 0
+                    for idx in range(seq_start, seq_end):
+                        tmp += 1-math.exp(-self.w*(e_time-self.point_list[idx].timestep))
+                    gamma[m][i] += self.A[m][n]/self.w*((1-math.exp(-self.w*(e_time-s_time)))*A[m][n][i-1]+tmp)
+                i += 1
+                seq_start = seq_end
+        return gamma
+
+    def draw_qq_pic(self, k):
+        seq = []
+        points = [[] for i in range(self.Z)]
+        for point in self.point_list:
+            points[point.dim].append(point.timestep)
+
+        for i in range(len(points[k]) - 1):
+            interval = calculus2(self.lam, k, points[k][i], points[k][i+1], 3)
+            seq.append(interval)
+        seq.sort()  # this is true value
+        # gamma = self.interval_calc()
+        # seq = gamma[k][1:]
+        # seq = seq[np.nonzero(seq)]
+        # seq = list(seq)
+        n = len(seq)
+        lam = n / sum(seq)
+        y = [math.log((n + 1) / i) / lam for i in range(1, n + 1)]
+        y.sort()
+        pyplot.plot(seq, y)
+        pyplot.plot(seq, seq)
+        pyplot.show()
+
+    def arrange_event(self):
+        self.event_dict = dict()
+        for i in range(self.Z):
+            self.event_dict[i] = []
+        for point in self.point_list:
+            self.event_dict[point.dim].append(point.timestep)
+        for i in range(self.Z):
+            print(len(self.event_dict[i]))
 #
 # gen_points()
 # draw_picture()
 
 
-generat = OneDimHaw()
-generat.gen_points()
-generat.draw_qq_pic()
+generat = MultiDimHaw()
+generat.gen_event()
+generat.arrange_event()
+generat.draw_qq_pic(0)

@@ -41,58 +41,64 @@ class HawkesProcessLearner:
         self.U1 = self.U1 + (self.A - self.Z1)
         self.U2 = self.U2 + (self.A - self.Z2)
 
-    def p_func(self, i, j, c):
-        sample = self.train_data.get_sample(c)
+    def p_func(self, i, j, c, batch_data, sum=None):
+        sample = batch_data[c]
 
         val = self.mu[sample.get_point(i)[1]]
-        for k in range(0, i):
-            val += self.A[sample.get_point(i)[1]][sample.get_point(k)[1]] * self.g_func(sample.get_point(i)[0]-sample.get_point(k)[0])
         if i == j:
+            for k in range(0, i):
+                val += self.A[sample.get_point(i)[1]][sample.get_point(k)[1]] * self.g_func(
+                    sample.get_point(i)[0] - sample.get_point(k)[0])
             val = self.mu[sample.get_point(i)[1]] / val
         else:
-            val = self.A[sample.get_point(i)[1]][sample.get_point(j)[1]] * self.g_func(sample.get_point(i)[0]-sample.get_point(j)[0]) / val
+            sum += self.A[sample.get_point(i)[1]][sample.get_point(j)[1]] * \
+                   self.g_func(sample.get_point(i)[0]-sample.get_point(j)[0])
+            val += sum
+            val = self.A[sample.get_point(i)[1]][sample.get_point(j)[1]] * \
+                  self.g_func(sample.get_point(i)[0]-sample.get_point(j)[0]) / val
+        return val, sum
 
-        return val
-
-    def renew_mu(self):
+    def renew_mu(self, batch_data):
         sum_T = 0
         mu = np.zeros(self.dim)
         print("calculating mu")
-        for i in range(self.train_data.get_size()):
-            sample = self.train_data.get_sample(i)
+        for i in range(len(batch_data)):
+            sample = batch_data[i]
             sum_T += sample.get_point(sample.get_size()-1)[0]
             for idx in range(sample.get_size()):
-                mu[sample.get_point(idx)[1]] += self.p_func(idx, idx, i)
+                mu[sample.get_point(idx)[1]] += self.p_func(idx, idx, i, batch_data)[0]
         self.mu = mu / sum_T
 
-    def B_func(self):
+    def B_func(self, batch_data):
         B = -self.Z1 + self.U1 - self.Z2 + self.U2
         B = B*self.row
-        for idx in range(self.train_data.get_size()):
-            sample = self.train_data.get_sample(idx)
+        for idx in range(len(batch_data)):
+            sample = batch_data[idx]
             last_T = sample.get_point(sample.get_size()-1)[0]
             for j in range(sample.get_size()):
                 B[:,sample.get_point(j)[1]] += self.G_func(last_T-sample.get_point(j)[0])
         return B
 
-    def C_func(self):
+    def C_func(self, batch_data):
         C = np.zeros((self.dim, self.dim))
-        for idx in range(self.train_data.get_size()):
-            sample = self.train_data.get_sample(idx)
+        for idx in range(len(batch_data)):
+            sample = batch_data[idx]
+            print(idx)
             for i in range(sample.get_size()):
-                print(idx, i)
+                sum = 0
                 for j in range(i):
-                    C[sample.get_point(i)[1]][sample.get_point(j)[1]] += self.p_func(i, j, idx)
+                    delta, sum = self.p_func(i, j, idx, batch_data, sum)
+                    C[sample.get_point(i)[1]][sample.get_point(j)[1]] += delta
         return C
 
     def G_func(self, x):
         return (math.exp(-self.beta*x) - 1)/(-self.beta)
 
-    def renew_A(self):
+    def renew_A(self, batch_data):
         print("calculating B")
-        B = self.B_func()
+        B = self.B_func(batch_data)
         print("calculating C")
-        C = self.C_func()
+        C = self.C_func(batch_data)
         A = -B + np.sqrt(B.dot(B) + 8*self.row*C)
         A = A / (4*self.row)
         self.A = A
@@ -102,16 +108,17 @@ class HawkesProcessLearner:
             print("begin training")
         L_history = []
         for k in range(epoc):
+            batch_data = self.train_data.get_next_batch()
             old_A = self.A
             old_mu = self.mu
-            self.renew_A()
-            self.renew_mu()
+            self.renew_A(batch_data)
+            self.renew_mu(batch_data)
             while np.linalg.norm(old_A-self.A) > 1e-7 or np.linalg.norm(old_mu - self.mu) > 1e-7:
                 print(np.linalg.norm(old_A-self.A), np.linalg.norm(old_mu - self.mu))
                 old_A = self.A
                 old_mu = self.mu
-                self.renew_A()
-                self.renew_mu()
+                self.renew_A(batch_data)
+                self.renew_mu(batch_data)
             self.renew_Z1()
             self.renew_Z2()
             self.renew_U()
