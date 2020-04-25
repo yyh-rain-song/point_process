@@ -13,8 +13,8 @@ class HawkesProcessLearner:
         self.beta = beta
         self.A = np.random.rand(self.dim, self.dim)
         self.mu = np.random.rand(self.dim)
-        self.Z1 = self.A - 1e-3
-        self.Z2 = self.A - 1e-3
+        self.Z1 = self.A - 1e-7
+        self.Z2 = self.A - 1e-7
         self.U1 = np.zeros((self.dim, self.dim))
         self.U2 = np.zeros((self.dim, self.dim))
         self.eps = 1e-3
@@ -26,7 +26,7 @@ class HawkesProcessLearner:
         u, s, v = np.linalg.svd(X)
         s = s - alpha
         s[s<0] = 0
-        return u*np.diag(s)*v
+        return np.matmul(np.matmul(u,np.diag(s)), v)
 
     def renew_Z1(self):
         self.Z1 = self.S_func(self.lam1/self.row, self.A+self.U1)
@@ -87,7 +87,7 @@ class HawkesProcessLearner:
                 mu[u1] = sum_pii / sum_T
                 C[u1,u2] = c
         self.mu = mu
-        A = -B + np.sqrt(B.dot(B) + 8*self.row*C)
+        A = -B + np.sqrt(B*B + 8*self.row*C)
         A = A / (4*self.row)
         self.A = A
 
@@ -101,6 +101,7 @@ class HawkesProcessLearner:
             old_mu = self.mu.copy()
             self.renew_A_mu(batch_data)
             while np.linalg.norm(old_A-self.A) > self.eps*np.linalg.norm(self.A) or np.linalg.norm(old_mu - self.mu) > self.eps*np.linalg.norm(self.mu):
+                print(np.linalg.norm(old_A-self.A), np.linalg.norm(old_mu - self.mu))
                 old_A = self.A.copy()
                 old_mu = self.mu.copy()
                 self.renew_A_mu(batch_data)
@@ -128,7 +129,7 @@ class HawkesProcessLearner:
             item3 = 0
             for u in range(self.dim):
                 for i in range(sample.get_size()):
-                    item3 += np.dot(sample.G_matrix[i], self.A[u])
+                    item3 += self.A[u,sample.get_point(i)[1]]*self.G_func(Tc-sample.get_point(i)[0])
             item3 = (item3 - 1)/(-self.beta)
             L += (log + item2 - item3)
         return L

@@ -14,6 +14,6 @@ row = 0.3
 beta = Config.beta
 
 learner = HawkesProcessLearner(lam, row, beta, train_data, test_data, dim)
-L_history = learner.train(epoc=1000, verbose=True)
+L_history = learner.train(epoc=100, verbose=True)
 plt.plot(L_history)
 plt.show()
