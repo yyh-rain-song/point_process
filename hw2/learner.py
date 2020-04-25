@@ -17,6 +17,7 @@ class HawkesProcessLearner:
         self.Z2 = self.A - 1e-3
         self.U1 = np.zeros((self.dim, self.dim))
         self.U2 = np.zeros((self.dim, self.dim))
+        self.eps = 1e-3
 
     def g_func(self, x):
         return math.exp(-self.beta*x)
@@ -41,33 +42,21 @@ class HawkesProcessLearner:
         self.U1 = self.U1 + (self.A - self.Z1)
         self.U2 = self.U2 + (self.A - self.Z2)
 
-    def p_func(self, i, j, c, batch_data, sum=None):
-        sample = batch_data[c]
+    def p_func(self, batch_data, u, u_2):
+        # given u,u', calc \sum p_ii and C
+        sum_pii = 0
+        C = 0
+        for sample in batch_data:
+            dim_idx = np.array(sample.dim_list)
+            wanted_dim_idx = np.where(dim_idx==u)[0]
+            for i in wanted_dim_idx:
+                sum_func = np.dot(sample.G_matrix[i], self.A[u])
+                pii = self.mu[u]/(self.mu[u]+sum_func)
+                sum_pii += pii
+                sum_pij = self.A[u,u_2]/(self.mu[u]+sum_func)*sample.G_matrix[i,u]
+                C += sum_pij
+        return sum_pii, C
 
-        val = self.mu[sample.get_point(i)[1]]
-        if i == j:
-            for k in range(0, i):
-                val += self.A[sample.get_point(i)[1]][sample.get_point(k)[1]] * self.g_func(
-                    sample.get_point(i)[0] - sample.get_point(k)[0])
-            val = self.mu[sample.get_point(i)[1]] / val
-        else:
-            sum += self.A[sample.get_point(i)[1]][sample.get_point(j)[1]] * \
-                   self.g_func(sample.get_point(i)[0]-sample.get_point(j)[0])
-            val += sum
-            val = self.A[sample.get_point(i)[1]][sample.get_point(j)[1]] * \
-                  self.g_func(sample.get_point(i)[0]-sample.get_point(j)[0]) / val
-        return val, sum
-
-    def renew_mu(self, batch_data):
-        sum_T = 0
-        mu = np.zeros(self.dim)
-        print("calculating mu")
-        for i in range(len(batch_data)):
-            sample = batch_data[i]
-            sum_T += sample.get_point(sample.get_size()-1)[0]
-            for idx in range(sample.get_size()):
-                mu[sample.get_point(idx)[1]] += self.p_func(idx, idx, i, batch_data)[0]
-        self.mu = mu / sum_T
 
     def B_func(self, batch_data):
         B = -self.Z1 + self.U1 - self.Z2 + self.U2
@@ -79,26 +68,25 @@ class HawkesProcessLearner:
                 B[:,sample.get_point(j)[1]] += self.G_func(last_T-sample.get_point(j)[0])
         return B
 
-    def C_func(self, batch_data):
-        C = np.zeros((self.dim, self.dim))
-        for idx in range(len(batch_data)):
-            sample = batch_data[idx]
-            print(idx)
-            for i in range(sample.get_size()):
-                sum = 0
-                for j in range(i):
-                    delta, sum = self.p_func(i, j, idx, batch_data, sum)
-                    C[sample.get_point(i)[1]][sample.get_point(j)[1]] += delta
-        return C
-
     def G_func(self, x):
         return (math.exp(-self.beta*x) - 1)/(-self.beta)
 
-    def renew_A(self, batch_data):
-        print("calculating B")
+    def renew_A_mu(self, batch_data):
         B = self.B_func(batch_data)
-        print("calculating C")
-        C = self.C_func(batch_data)
+
+        sum_T = 0
+        for i in range(len(batch_data)):
+            sample = batch_data[i]
+            sum_T += sample.get_point(sample.get_size() - 1)[0]
+
+        mu = np.zeros(self.dim)
+        C = np.zeros((self.dim, self.dim))
+        for u1 in range(self.dim):
+            for u2 in range(self.dim):
+                sum_pii, c = self.p_func(batch_data, u1, u2)
+                mu[u1] = sum_pii / sum_T
+                C[u1,u2] = c
+        self.mu = mu
         A = -B + np.sqrt(B.dot(B) + 8*self.row*C)
         A = A / (4*self.row)
         self.A = A
@@ -109,16 +97,13 @@ class HawkesProcessLearner:
         L_history = []
         for k in range(epoc):
             batch_data = self.train_data.get_next_batch()
-            old_A = self.A
-            old_mu = self.mu
-            self.renew_A(batch_data)
-            self.renew_mu(batch_data)
-            while np.linalg.norm(old_A-self.A) > 1e-7 or np.linalg.norm(old_mu - self.mu) > 1e-7:
-                print(np.linalg.norm(old_A-self.A), np.linalg.norm(old_mu - self.mu))
-                old_A = self.A
-                old_mu = self.mu
-                self.renew_A(batch_data)
-                self.renew_mu(batch_data)
+            old_A = self.A.copy()
+            old_mu = self.mu.copy()
+            self.renew_A_mu(batch_data)
+            while np.linalg.norm(old_A-self.A) > self.eps*np.linalg.norm(self.A) or np.linalg.norm(old_mu - self.mu) > self.eps*np.linalg.norm(self.mu):
+                old_A = self.A.copy()
+                old_mu = self.mu.copy()
+                self.renew_A_mu(batch_data)
             self.renew_Z1()
             self.renew_Z2()
             self.renew_U()
@@ -130,20 +115,20 @@ class HawkesProcessLearner:
 
     def log_likelyhood(self):
         L = 0
+        print('calculating L')
         for idx in range(self.test_data.get_size()):
             sample = self.test_data.get_sample(idx)
             log = 0
             for i in range(sample.get_size()):
                 tmp = self.mu[sample.get_point(i)[1]]
-                for j in range(i):
-                    tmp += self.A[sample.get_point(i)[1]][sample.get_point(j)[1]]*\
-                           self.g_func(sample.get_point(i)[0]-sample.get_point(j)[0])
+                tmp += np.dot(sample.G_matrix[i], self.A[sample.get_point(i)[1]])
                 log += math.log(tmp)
             Tc = sample.get_point(sample.get_size()-1)[0]
             item2 = -Tc * self.mu.sum()
             item3 = 0
-            for i in range(self.dim):
-                for j in range(sample.get_size()):
-                    item3 += self.A[i][sample.get_point(j)[1]] * self.G_func(Tc-sample.get_point(j)[1])
-            L += (log + item2 + item3)
+            for u in range(self.dim):
+                for i in range(sample.get_size()):
+                    item3 += np.dot(sample.G_matrix[i], self.A[u])
+            item3 = (item3 - 1)/(-self.beta)
+            L += (log + item2 - item3)
         return L
