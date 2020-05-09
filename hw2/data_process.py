@@ -4,6 +4,7 @@ from Config import Config
 import math
 import pickle
 import os
+from pathlib import Path
 
 
 class Sample:
@@ -43,9 +44,10 @@ class Sample:
 
 
 def build_data(datapath, save_name):
-    dir = Config.cache_path + "/" + save_name+"/"
-    if os.path.exists(dir) is False:
-        os.mkdir(dir)
+    dir = Config.cache_path + "/" + 'beta_{0}'.format(Config.beta) + '/' + save_name+"/"
+    pathdir = Path(dir)
+    if pathdir.exists() is False:
+        pathdir.mkdir(parents=True)
     sample_dict = dict()
     names = list()
     lengths = list()
@@ -59,7 +61,7 @@ def build_data(datapath, save_name):
         sample_dict[row[0]].add_point(float(row[1]), int(row[2]))
     for sam in sample_dict.values():
         lengths.append(sam.get_size())
-        name = Config.cache_path + "/" + save_name + "/" + sam.name + ".dat"
+        name = dir + sam.name + ".dat"
         train_skip = ["g4005", "g1515"]
         test_skip = ["g2314", "g3758"]
         if os.path.exists(name) or (sam.name in train_skip and save_name == 'train') or (sam.name in test_skip and save_name == 'test'):
@@ -68,7 +70,7 @@ def build_data(datapath, save_name):
         print("calculating " + sam.name)
         sam.pre_calculate()
         # save sample file
-        file = open(Config.cache_path + "/" + save_name + "/" + sam.name + ".dat", "wb")
+        file = open(dir + sam.name + ".dat", "wb")
         pickle.dump(sam, file)
         file.close()
     namefile = open(Config.cache_path+'/'+save_name+'.txt', 'w')
@@ -115,10 +117,13 @@ class Dataset:
         for ll in self.names:
             num.append(int(ll[1]))
         ave_len = sum(num) / len(num)
-        print("max: ", max(num))
         self.ave_batch_len = ave_len * Config.batch_size
         self.start = 0
+        print("overall len:", sum(num))
+        print("ave batch len:", self.ave_batch_len)
+        print("num batches:", sum(num)/self.ave_batch_len)
 
 
 if __name__ == '__main__':
-    build_data(Config.test_data_path, "test")
+    build_data(Config.train_data_path, 'train')
+    build_data(Config.test_data_path, 'test')

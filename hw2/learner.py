@@ -18,6 +18,8 @@ class HawkesProcessLearner:
         self.U1 = np.zeros((self.dim, self.dim))
         self.U2 = np.zeros((self.dim, self.dim))
         self.eps = 1e-3
+        self.renew_Z1()
+        self.renew_Z2()
 
     def g_func(self, x):
         return math.exp(-self.beta*x)
@@ -42,21 +44,28 @@ class HawkesProcessLearner:
         self.U1 = self.U1 + (self.A - self.Z1)
         self.U2 = self.U2 + (self.A - self.Z2)
 
-    def p_func(self, batch_data, u, u_2):
-        # given u,u', calc \sum p_ii and C
+    def pii_func(self, batch_data, u):
         sum_pii = 0
+        for sample in batch_data:
+            dim_idx = np.array(sample.dim_list)
+            wanted_dim_idx = np.where(dim_idx == u)[0]
+            for i in wanted_dim_idx:
+                sum_func = np.dot(sample.G_matrix[i], self.A[u])
+                pii = self.mu[u] / (self.mu[u] + sum_func)
+                sum_pii += pii
+        return sum_pii
+
+    def pij_func(self, batch_data, u, u_2):
+        # given u,u', calc C
         C = 0
         for sample in batch_data:
             dim_idx = np.array(sample.dim_list)
             wanted_dim_idx = np.where(dim_idx==u)[0]
             for i in wanted_dim_idx:
                 sum_func = np.dot(sample.G_matrix[i], self.A[u])
-                pii = self.mu[u]/(self.mu[u]+sum_func)
-                sum_pii += pii
                 sum_pij = self.A[u,u_2]/(self.mu[u]+sum_func)*sample.G_matrix[i,u]
                 C += sum_pij
-        return sum_pii, C
-
+        return C
 
     def B_func(self, batch_data):
         B = -self.Z1 + self.U1 - self.Z2 + self.U2
@@ -82,12 +91,13 @@ class HawkesProcessLearner:
         mu = np.zeros(self.dim)
         C = np.zeros((self.dim, self.dim))
         for u1 in range(self.dim):
+            sum_pii = self.pii_func(batch_data, u1)
+            mu[u1] = sum_pii / sum_T
             for u2 in range(self.dim):
-                sum_pii, c = self.p_func(batch_data, u1, u2)
-                mu[u1] = sum_pii / sum_T
+                c = self.pij_func(batch_data, u1, u2)
                 C[u1,u2] = c
         self.mu = mu
-        A = -B + np.sqrt(B*B + 8*self.row*C)
+        A = -B + np.sqrt(np.multiply(B,B) + 8*self.row*C)
         A = A / (4*self.row)
         self.A = A
 
@@ -101,35 +111,34 @@ class HawkesProcessLearner:
             old_mu = self.mu.copy()
             self.renew_A_mu(batch_data)
             while np.linalg.norm(old_A-self.A) > self.eps*np.linalg.norm(self.A) or np.linalg.norm(old_mu - self.mu) > self.eps*np.linalg.norm(self.mu):
-                print(np.linalg.norm(old_A-self.A), np.linalg.norm(old_mu - self.mu))
                 old_A = self.A.copy()
                 old_mu = self.mu.copy()
                 self.renew_A_mu(batch_data)
             self.renew_Z1()
             self.renew_Z2()
             self.renew_U()
-            L = self.log_likelyhood()
+            L = self.log_likelyhood(batch_data)
             if verbose:
                 print("epoc: "+str(k)+" loss: "+str(L))
             L_history.append(L)
         return L_history
 
-    def log_likelyhood(self):
+    def log_likelyhood(self, batch_data):
         L = 0
         print('calculating L')
-        for idx in range(self.test_data.get_size()):
-            sample = self.test_data.get_sample(idx)
+        for idx in range(len(batch_data)):
+            sample = batch_data[idx]
             log = 0
             for i in range(sample.get_size()):
                 tmp = self.mu[sample.get_point(i)[1]]
                 tmp += np.dot(sample.G_matrix[i], self.A[sample.get_point(i)[1]])
                 log += math.log(tmp)
-            Tc = sample.get_point(sample.get_size()-1)[0]
-            item2 = -Tc * self.mu.sum()
-            item3 = 0
-            for u in range(self.dim):
-                for i in range(sample.get_size()):
-                    item3 += self.A[u,sample.get_point(i)[1]]*self.G_func(Tc-sample.get_point(i)[0])
-            item3 = (item3 - 1)/(-self.beta)
+            item2 = -sample.get_point(sample.get_size()-1)[0] * self.mu.sum()
+            temp_G = sample.G_matrix[sample.get_size() - 1]
+            # for u in range(self.dim):
+            #     item3 += np.dot(self.A[u], temp_G'
+            # Can be written in matrix form
+            # use G = (g-1)/(-beta)
+            item3 = np.dot(np.sum(self.A, axis=0), (temp_G-1)/(-self.beta))
             L += (log + item2 - item3)
         return L
