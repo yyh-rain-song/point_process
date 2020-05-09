@@ -82,7 +82,7 @@ class Dataset:
     def __init__(self, save_name):
         self.sample_list = []
         self.name_path = Config.cache_path+"/"+save_name+".txt"
-        self.data_dir = Config.cache_path+'/'+save_name+"/"
+        self.data_dir = Config.cache_path+'/' + "beta_"+str(Config.beta) + '/' + save_name+"/"
         self.names = []
         with open(self.name_path) as f:
             names = f.readlines()

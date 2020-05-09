@@ -43,6 +43,6 @@ dim_idx = np.array(sample.dim_list)
 wanted_dim_idx = np.where(dim_idx==u)[0]
 for i in wanted_dim_idx:
     sum_func = np.dot(sample.G_matrix[i], self.A[u])
-    sum_pij = self.A[u,u_2]/(self.mu[u]+sum_func)*sample.G_matrix[i,u]
+    sum_pij = self.A[u,u_2]/(self.mu[u]+sum_func)*sample.G_matrix[i,u_2]
     C += sum_pij
 ```

@@ -5,4 +5,6 @@ class Config:
     cache_path = "cache"
     output_path = "output"
     batch_size = 64
-    beta = 0.5
+    beta = 0.2
+    lam = [0.6, 0.02]
+    row = 0.3

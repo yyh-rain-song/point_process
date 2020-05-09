@@ -1,5 +1,6 @@
 import numpy as np
 import math
+from matplotlib import pyplot as plt
 
 
 class HawkesProcessLearner:
@@ -63,7 +64,7 @@ class HawkesProcessLearner:
             wanted_dim_idx = np.where(dim_idx==u)[0]
             for i in wanted_dim_idx:
                 sum_func = np.dot(sample.G_matrix[i], self.A[u])
-                sum_pij = self.A[u,u_2]/(self.mu[u]+sum_func)*sample.G_matrix[i,u]
+                sum_pij = self.A[u,u_2]/(self.mu[u]+sum_func)*sample.G_matrix[i,u_2]
                 C += sum_pij
         return C
 
@@ -121,6 +122,9 @@ class HawkesProcessLearner:
             if verbose:
                 print("epoc: "+str(k)+" loss: "+str(L))
             L_history.append(L)
+            plt.clf()
+            plt.plot(L_history)
+            plt.show()
         return L_history
 
     def log_likelyhood(self, batch_data):
