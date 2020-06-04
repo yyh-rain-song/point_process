@@ -1,7 +1,7 @@
 from learner import HawkesProcessLearner
 from Config import Config
 from data_process import Dataset
-from matplotlib import pyplot as plt
+import pickle
 from data_process import Sample
 
 train_data = Dataset("train")
@@ -14,6 +14,8 @@ row = Config.row
 beta = Config.beta
 
 learner = HawkesProcessLearner(lam, row, beta, train_data, test_data, dim)
-L_history = learner.train(epoc=1000, verbose=True)
-plt.plot(L_history)
-plt.show()
+A, mu = learner.train(epoc=100, verbose=True)
+file = open("A.dat", "wb")
+pickle.dump(A, file)
+file2 = open("mu.dat", "wb")
+pickle.dump(mu, file2)

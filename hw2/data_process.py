@@ -65,6 +65,7 @@ def build_data(datapath, save_name):
         train_skip = ["g4005", "g1515"]
         test_skip = ["g2314", "g3758"]
         if os.path.exists(name) or (sam.name in train_skip and save_name == 'train') or (sam.name in test_skip and save_name == 'test'):
+            print("skip")
             continue
         sam.shift_time()
         print("calculating " + sam.name)
@@ -92,7 +93,9 @@ class Dataset:
             ll = line.strip().split(' ')
             if not ((ll[0] in train_skip and save_name == 'train') or (ll[0] in test_skip and save_name == 'test')):
                 self.names.append(ll)
-        self._get_all_num()
+        self.data = []
+        for i in range(self.get_size()):
+            self.data.append(self.get_sample(i))
 
     def get_sample(self, idx):
         sample = pickle.load(open(self.data_dir+self.names[idx][0]+".dat", "rb"))
@@ -101,27 +104,8 @@ class Dataset:
     def get_size(self):
         return len(self.names)
 
-    def get_next_batch(self):
-        num = 0
-        batch_data = []
-        while num < self.ave_batch_len:
-            sam = self.get_sample(self.start)
-            batch_data.append(sam)
-            num += sam.get_size()
-            self.start += 1
-            self.start %= self.get_size()
-        return batch_data
-
-    def _get_all_num(self):
-        num = []
-        for ll in self.names:
-            num.append(int(ll[1]))
-        ave_len = sum(num) / len(num)
-        self.ave_batch_len = ave_len * Config.batch_size
-        self.start = 0
-        print("overall len:", sum(num))
-        print("ave batch len:", self.ave_batch_len)
-        print("num batches:", sum(num)/self.ave_batch_len)
+    def get_data(self):
+        return self.data
 
 
 if __name__ == '__main__':

@@ -105,9 +105,10 @@ class HawkesProcessLearner:
     def train(self, epoc, verbose=False):
         if verbose:
             print("begin training")
-        L_history = []
+        A_history = [self.A]
+        A_change = []
         for k in range(epoc):
-            batch_data = self.train_data.get_next_batch()
+            batch_data = self.train_data.get_data()
             old_A = self.A.copy()
             old_mu = self.mu.copy()
             self.renew_A_mu(batch_data)
@@ -118,14 +119,16 @@ class HawkesProcessLearner:
             self.renew_Z1()
             self.renew_Z2()
             self.renew_U()
-            L = self.log_likelyhood(batch_data)
-            if verbose:
-                print("epoc: "+str(k)+" loss: "+str(L))
-            L_history.append(L)
-            plt.clf()
-            plt.plot(L_history)
-            plt.show()
-        return L_history
+            A_history.append(self.A)
+            if len(A_history) > 2:
+                changes_percent = np.linalg.norm(A_history[-1] - A_history[-2], ord='fro')/np.linalg.norm(A_history[-1], ord='fro')
+                A_change.append(changes_percent)
+                if verbose:
+                    print("epoc: "+str(k)+" A_change_percent: "+str(changes_percent))
+                plt.clf()
+                plt.plot(A_change)
+                plt.show()
+        return self.A, self.mu
 
     def log_likelyhood(self, batch_data):
         L = 0
